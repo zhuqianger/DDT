@@ -1,0 +1,79 @@
+# ======================
+# Unity .gitignore 模板
+# 适用于 Unity 2020+ 版本
+# ======================
+
+# --- 临时文件和缓存 ---
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# --- Visual Studio / VS Code ---
+.vs/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# --- 操作系统文件 ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Unity 特定文件 ---
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.cacheprofile
+
+# --- 自动生成的Assembly定义 ---
+Assembly-CSharp.csproj.meta
+Assembly-CSharp-Editor.csproj.meta
+
+# --- 插件和包管理 ---
+Packages/
+!Packages/manifest.json
+!Packages/packages-lock.json
+
+# --- 第三方工具 ---
+*.pidb
+*.booproj
+*.svd
+*.mdb
+*.opendb
+*.VC.db
+
+# --- 可选：根据项目需要取消注释 ---
+
+# 如果不需要版本控制场景文件（大型团队）
+# *.unity
+
+# 如果不需要版本控制预制体元数据
+# *.prefab.meta
+
+# 如果团队使用不同的IDE，可以保留IDE配置
+# !.vscode/settings.json
+
+# --- 推荐保留的文件 ---
+# ✅ Assets/ (所有资源文件)
+# ✅ ProjectSettings/ (项目设置)
+# ✅ Packages/manifest.json (包依赖)
+# ✅ Packages/packages-lock.json (包锁定)
