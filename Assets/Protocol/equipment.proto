@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package ddt.protocol;
+
+// direction: C2S
+message GetPlayerEquipReq {
+}
+
+// direction: S2C
+message GetPlayerEquipResp {
+  int64 weaponId = 1;
+  int64 clothesId = 2;
+  int64 pantsId = 3;
+  int64 hatId = 4;
+  int64 necklaceId = 5;
+}
+
+// direction: C2S
+message UpdatePlayerEquipReq {
+  int64 weaponId = 1;
+  int64 clothesId = 2;
+  int64 pantsId = 3;
+  int64 hatId = 4;
+  int64 necklaceId = 5;
+}
+
+// direction: S2C
+message UpdatePlayerEquipResp {
+  int32 result = 1;
+  int64 weaponId = 2;
+  int64 clothesId = 3;
+  int64 pantsId = 4;
+  int64 hatId = 5;
+  int64 necklaceId = 6;
+}
+

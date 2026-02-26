@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package ddt.protocol;
+
+// 获取玩家背包道具列表
+// direction: C2S
+message GetPlayerBagReq {
+}
+
+// 获取玩家背包道具列表返回
+// direction: S2C
+message GetPlayerBagResp {
+  repeated BagItem items = 1;
+}
+
+// 单个背包道具条目，对应 t_player_bag 中的一行记录（忽略时间字段）
+message BagItem {
+  int64 id = 1;        // 背包记录ID
+  int64 itemId = 2;    // 道具ID（配置表ID）
+  int32 count = 3;     // 道具数量（可堆叠）
+}
+
+// 使用道具请求
+// direction: C2S
+message UseItemReq {
+  int64 itemId = 1;    // 使用的道具ID
+  int32 count = 2;     // 使用数量
+}
+
+// 使用道具返回
+// direction: S2C
+message UseItemResp {
+  int32 result = 1;    // 0: 成功, 其它: 错误码
+  int64 itemId = 2;
+  int32 usedCount = 3; // 实际消费的数量
+  int32 leftCount = 4; // 背包中剩余数量
+}
+
