@@ -1,5 +1,5 @@
 using System;
-using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
@@ -11,239 +11,182 @@ using UnityEngine.Networking;
 namespace Network
 {
     /// <summary>
-    /// 网络管理：HTTP 登录后建立 WebSocket，后续请求与推送通过 WebSocket。
-    /// 挂在启动场景一个物体上，不销毁。
+    /// 网络层：HTTP 登录、WebSocket 连接、按协议名(cmd)注册回调，收到推送后自动派发到对应回调列表。
     /// </summary>
     public class NetworkManager : MonoBehaviour
     {
         public static NetworkManager Instance { get; private set; }
 
-        [SerializeField] private string baseUrl = "http://localhost:8080";
-        [SerializeField] private float timeout = 10f;
+        [SerializeField] string _baseUrl = "http://localhost:8080";
+        [SerializeField] float _timeout = 10f;
 
-        public string BaseUrl { get => baseUrl; set => baseUrl = value?.TrimEnd('/') ?? ""; }
+        public string BaseUrl { get => _baseUrl; set => _baseUrl = value?.TrimEnd('/') ?? ""; }
         public bool IsConnected { get; private set; }
         public string AuthToken { get; set; }
-        public PlayerInfo PlayerInfo { get; private set; }
-
         public bool IsWsConnected => _ws != null && _ws.State == WebSocketState.Open;
-        public event Action<PlayerInfo> OnPlayerInfoReceived;
         public event Action<bool> OnWsConnectionChanged;
 
-        private ClientWebSocket _ws;
-        private CancellationTokenSource _wsCts;
-        private readonly ConcurrentQueue<string> _wsMessageQueue = new ConcurrentQueue<string>();
-        private bool _wsConnectedFlag;
-        private bool _wsDisconnectedFlag;
+        ClientWebSocket _ws;
+        CancellationTokenSource _wsCts;
+        readonly ConcurrentQueue<string> _msgQueue = new ConcurrentQueue<string>();
+        readonly ConcurrentQueue<Action> _pending = new ConcurrentQueue<Action>();
+        readonly Dictionary<string, List<Action<string, int, string, string>>> _handlers = new Dictionary<string, List<Action<string, int, string, string>>>();
 
-        private void Awake()
+        void Awake()
         {
-            if (Instance != null && Instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
         }
 
-        private void OnDestroy()
+        void OnDestroy()
         {
-            CloseWebSocket();
+            CloseWs();
             if (Instance == this) Instance = null;
         }
 
-        private void Update()
+        void Update()
         {
-            if (_wsConnectedFlag)
-            {
-                _wsConnectedFlag = false;
-                OnWsConnectionChanged?.Invoke(true);
-            }
-            if (_wsDisconnectedFlag)
-            {
-                _wsDisconnectedFlag = false;
-                OnWsConnectionChanged?.Invoke(false);
-            }
-            while (_wsMessageQueue.TryDequeue(out string raw))
+            while (_pending.TryDequeue(out var a)) a?.Invoke();
+            while (_msgQueue.TryDequeue(out string raw))
             {
                 try
                 {
-                    var envelope = JsonUtility.FromJson<WsMessageDto>(raw);
-                    if (envelope == null) continue;
-                    if (envelope.cmd == "player.get" && envelope.code == 0 && !string.IsNullOrEmpty(envelope.data))
+                    var e = JsonUtility.FromJson<WsMessageDto>(raw);
+                    if (e == null) continue;
+                    var cmd = e.cmd ?? "";
+                    if (_handlers.TryGetValue(cmd, out var list))
                     {
-                        PlayerInfo = JsonUtility.FromJson<PlayerInfo>(envelope.data);
-                        OnPlayerInfoReceived?.Invoke(PlayerInfo);
+                        var reqId = e.reqId ?? "";
+                        var code = e.code;
+                        var msg = e.msg ?? "";
+                        var data = e.data ?? "";
+                        foreach (var h in list) try { h(reqId, code, msg, data); } catch (Exception) { }
                     }
                 }
-                catch (Exception) { /* ignore parse error */ }
+                catch (Exception) { }
             }
         }
 
-        /// <summary>发送账号密码建立连接（POST 登录接口）</summary>
-        /// <param name="onResult">(是否成功, 失败时的错误信息)</param>
+        /// <summary>按协议名注册：服务端返回的 cmd 一致时调用 handler(reqId, code, msg, data)。</summary>
+        public void Register(string cmd, Action<string, int, string, string> handler)
+        {
+            if (string.IsNullOrEmpty(cmd) || handler == null) return;
+            if (!_handlers.ContainsKey(cmd)) _handlers[cmd] = new List<Action<string, int, string, string>>();
+            _handlers[cmd].Add(handler);
+        }
+
+        /// <summary>取消协议回调注册。</summary>
+        public void Unregister(string cmd, Action<string, int, string, string> handler)
+        {
+            if (string.IsNullOrEmpty(cmd) || handler == null) return;
+            if (_handlers.TryGetValue(cmd, out var list)) list.Remove(handler);
+        }
+
+        /// <summary>发送 WebSocket 命令（需已连接）。</summary>
+        public void SendWsCommand(string cmd)
+        {
+            if (!IsWsConnected) return;
+            var json = "{\"cmd\":\"" + Escape(cmd) + "\",\"reqId\":\"" + Guid.NewGuid().ToString("N") + "\"}";
+            var bytes = Encoding.UTF8.GetBytes(json);
+            _ = _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, _wsCts?.Token ?? default);
+        }
+
         public void EstablishConnection(string account, string password, Action<bool, string> onResult)
         {
-            if (string.IsNullOrEmpty(account) || string.IsNullOrEmpty(password))
-            {
-                onResult?.Invoke(false, "账号或密码为空");
-                return;
-            }
-
-            string json = $"{{\"username\":\"{Escape(account)}\",\"password\":\"{Escape(password)}\"}}";
+            if (string.IsNullOrEmpty(account) || string.IsNullOrEmpty(password)) { onResult?.Invoke(false, "账号或密码为空"); return; }
+            var json = "{\"username\":\"" + Escape(account) + "\",\"password\":\"" + Escape(password) + "\"}";
             Post("/api/login", json, (ok, body) =>
             {
                 IsConnected = ok;
-                if (!ok)
-                {
-                    onResult?.Invoke(false, body ?? "请求失败");
-                    return;
-                }
+                if (!ok) { onResult?.Invoke(false, body ?? "请求失败"); return; }
                 try
                 {
                     var dto = JsonUtility.FromJson<ApiResponseDto>(body);
-                    if (dto != null && dto.IsSuccess)
-                    {
-                        if (!string.IsNullOrEmpty(dto.data)) AuthToken = dto.data;
-                        onResult?.Invoke(true, null);
-                    }
-                    else
-                        onResult?.Invoke(false, dto?.msg ?? "登录失败");
+                    if (dto != null && dto.IsSuccess) { if (!string.IsNullOrEmpty(dto.data)) AuthToken = dto.data; onResult?.Invoke(true, null); }
+                    else onResult?.Invoke(false, dto?.msg ?? "登录失败");
                 }
-                catch (Exception e)
-                {
-                    onResult?.Invoke(false, e.Message);
-                }
+                catch (Exception ex) { onResult?.Invoke(false, ex.Message); }
             });
         }
 
-        /// <summary>建立 WebSocket 连接（需在登录成功后调用，使用当前 AuthToken）</summary>
         public void ConnectWebSocket(Action<bool, string> onResult)
         {
-            if (string.IsNullOrEmpty(AuthToken))
-            {
-                onResult?.Invoke(false, "请先登录");
-                return;
-            }
-            CloseWebSocket();
-            string wsUrl = BaseUrl.Replace("http://", "ws://").Replace("https://", "wss://").TrimEnd('/') + "/ws?token=" + Uri.EscapeDataString(AuthToken);
-            StartCoroutine(ConnectWebSocketCoroutine(wsUrl, onResult));
+            if (string.IsNullOrEmpty(AuthToken)) { onResult?.Invoke(false, "请先登录"); return; }
+            CloseWs();
+            var wsUrl = BaseUrl.Replace("http://", "ws://").Replace("https://", "wss://").TrimEnd('/') + "/ws?token=" + Uri.EscapeDataString(AuthToken);
+            StartCoroutine(ConnectWsCo(wsUrl, onResult));
         }
 
-        private IEnumerator ConnectWebSocketCoroutine(string wsUrl, Action<bool, string> onResult)
+        IEnumerator ConnectWsCo(string wsUrl, Action<bool, string> onResult)
         {
             _ws = new ClientWebSocket();
             _wsCts = new CancellationTokenSource();
             var task = _ws.ConnectAsync(new Uri(wsUrl), _wsCts.Token);
-            while (!task.IsCompleted)
-                yield return null;
-            if (task.IsFaulted)
-            {
-                onResult?.Invoke(false, task.Exception?.Message ?? "WebSocket 连接失败");
-                yield break;
-            }
-            if (task.IsCanceled)
-            {
-                onResult?.Invoke(false, "已取消");
-                yield break;
-            }
-            _wsConnectedFlag = true;
-            onResult?.Invoke(true, null);
-            _ = ReceiveLoop();
+            while (!task.IsCompleted) yield return null;
+            if (task.IsFaulted) { onResult?.Invoke(false, task.Exception?.Message ?? "连接失败"); yield break; }
+            if (task.IsCanceled) { onResult?.Invoke(false, "已取消"); yield break; }
+            _pending.Enqueue(() => OnWsConnectionChanged?.Invoke(true));
+            onResult?.Invoke(true, null); // 建议在此或 OnWsConnectionChanged 中调用各模块 Init（如 PlayerInit.Init、DailySignInit.Init）
+            _ = RecvLoop();
         }
 
-        private async Task ReceiveLoop()
+        async Task RecvLoop()
         {
-            var buffer = new byte[4096];
+            var buf = new byte[4096];
             var cts = _wsCts?.Token ?? CancellationToken.None;
             try
             {
                 while (_ws != null && _ws.State == WebSocketState.Open)
                 {
-                    var segment = new ArraySegment<byte>(buffer);
-                    var result = await _ws.ReceiveAsync(segment, cts);
-                    if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
-                        break;
-                    if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Text && result.Count > 0)
-                        _wsMessageQueue.Enqueue(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                    var seg = new ArraySegment<byte>(buf);
+                    var res = await _ws.ReceiveAsync(seg, cts);
+                    if (res.MessageType == WebSocketMessageType.Close) break;
+                    if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)
+                        _msgQueue.Enqueue(Encoding.UTF8.GetString(buf, 0, res.Count));
                 }
             }
             catch (ObjectDisposedException) { }
             catch (OperationCanceledException) { }
-            finally
-            {
-                _wsDisconnectedFlag = true;
-            }
+            finally { _pending.Enqueue(() => OnWsConnectionChanged?.Invoke(false)); }
         }
 
-        /// <summary>通过 WebSocket 请求玩家信息（需先 ConnectWebSocket）</summary>
-        public void RequestPlayerInfo()
-        {
-            if (!IsWsConnected)
-                return;
-            string json = "{\"cmd\":\"player.get\",\"reqId\":\"" + Guid.NewGuid().ToString("N") + "\"}";
-            var bytes = Encoding.UTF8.GetBytes(json);
-            _ = _ws.SendAsync(new ArraySegment<byte>(bytes), System.Net.WebSockets.WebSocketMessageType.Text, true, _wsCts?.Token ?? default);
-        }
-
-        private void CloseWebSocket()
+        void CloseWs()
         {
             _wsCts?.Cancel();
-            try
-            {
-                _ws?.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
-            }
-            catch (Exception) { }
+            try { _ws?.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None); } catch (Exception) { }
             _ws?.Dispose();
             _ws = null;
             _wsCts = null;
         }
 
-        /// <summary>发送请求，在 onResponse 中接收响应（HTTP，未建 WS 时可用）</summary>
-        /// <param name="path">路径，如 /api/room/list</param>
-        /// <param name="jsonBody">请求体 JSON，可为 null</param>
-        /// <param name="onResponse">(是否成功, 响应内容或错误信息)</param>
         public void SendRequest(string path, string jsonBody, Action<bool, string> onResponse)
         {
             if (onResponse == null) return;
-            StartCoroutine(PostCoroutine(path, jsonBody, onResponse));
+            StartCoroutine(PostCo((path ?? "").TrimStart('/'), jsonBody, onResponse));
         }
 
-        private static string Escape(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        }
+        static string Escape(string s) => string.IsNullOrEmpty(s) ? "" : s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-        private string FullUrl(string path)
-        {
-            path = (path ?? "").Trim();
-            if (!path.StartsWith("/")) path = "/" + path;
-            return BaseUrl + path;
-        }
-
-        private void Post(string path, string jsonBody, Action<bool, string> onResponse)
+        void Post(string path, string jsonBody, Action<bool, string> onResponse)
         {
             if (onResponse == null) return;
-            StartCoroutine(PostCoroutine(path, jsonBody, onResponse));
+            StartCoroutine(PostCo(path.TrimStart('/'), jsonBody, onResponse));
         }
 
-        private IEnumerator PostCoroutine(string path, string jsonBody, Action<bool, string> onResponse)
+        IEnumerator PostCo(string path, string jsonBody, Action<bool, string> onResponse)
         {
-            byte[] body = string.IsNullOrEmpty(jsonBody) ? null : Encoding.UTF8.GetBytes(jsonBody);
-            using (var req = new UnityWebRequest(FullUrl(path), "POST"))
+            path = string.IsNullOrEmpty(path) ? "" : (path.StartsWith("/") ? path : "/" + path);
+            var body = string.IsNullOrEmpty(jsonBody) ? null : Encoding.UTF8.GetBytes(jsonBody);
+            using (var req = new UnityWebRequest(BaseUrl + path, "POST"))
             {
-                req.timeout = (int)timeout;
+                req.timeout = (int)_timeout;
                 req.downloadHandler = new DownloadHandlerBuffer();
-                if (body != null && body.Length > 0)
-                    req.uploadHandler = new UploadHandlerRaw(body);
+                if (body != null && body.Length > 0) req.uploadHandler = new UploadHandlerRaw(body);
                 req.SetRequestHeader("Content-Type", "application/json");
                 req.SetRequestHeader("Accept", "application/json");
-                if (!string.IsNullOrEmpty(AuthToken))
-                    req.SetRequestHeader("Authorization", "Bearer " + AuthToken);
+                if (!string.IsNullOrEmpty(AuthToken)) req.SetRequestHeader("Authorization", "Bearer " + AuthToken);
                 yield return req.SendWebRequest();
-
                 if (req.result == UnityWebRequest.Result.Success)
                     onResponse(true, req.downloadHandler?.text ?? "");
                 else

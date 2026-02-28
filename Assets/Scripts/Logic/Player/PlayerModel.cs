@@ -1,12 +1,12 @@
 using System;
 
-namespace Network
+namespace Logic.Player
 {
     /// <summary>
-    /// 与后端 player 表 / PlayerInfoDto 对应的玩家信息（登录后通过 WebSocket player.get 获取）。
+    /// 玩家信息模型，与后端 PlayerInfoDto / player 表对应。
     /// </summary>
     [Serializable]
-    public class PlayerInfo
+    public class PlayerModel
     {
         public long id;
         public string username;
