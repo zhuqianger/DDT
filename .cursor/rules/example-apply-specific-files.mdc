@@ -1,0 +1,15 @@
+---
+description: 示例-仅在 UI 脚本文件中自动应用
+globs: DDT/Assets/Scripts/UI/**/*.cs
+alwaysApply: false
+---
+
+# Apply To Specific Files 示例
+
+- 当上下文命中 `DDT/Assets/Scripts/UI/**/*.cs` 时自动应用。
+- 不在该路径范围时不会自动应用。
+
+## 规则内容（示例）
+
+- UI 脚本命名使用 `*View` 或 `*Panel` 后缀。
+- `MonoBehaviour` 里不直接发网络请求，改由 `Logic` 层转发。

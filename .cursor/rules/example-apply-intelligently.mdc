@@ -1,0 +1,14 @@
+---
+description: 当生成网络相关内容时
+alwaysApply: false
+---
+# Apply Intelligently 示例
+
+- 这类规则不全局常驻，也不限制到固定路径。
+- 当你的请求与“客户端网络模块”语义强相关时，AI 会更倾向应用本规则。
+
+## 规则内容（示例）
+
+- Unity 客户端网络层统一通过 `NetworkManager` 发送与注册回调。
+- 业务模块通过 `Init/Dispose` 管理 `Register/Unregister` 生命周期。
+- 新增协议时优先补充 `cmd` 常量，避免硬编码散落。
