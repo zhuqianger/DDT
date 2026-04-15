@@ -1,0 +1,28 @@
+---
+description: MVC 功能代码必须继承项目基类
+alwaysApply: true
+---
+
+# MVC 继承约束
+
+在本项目生成或新增 MVC 功能代码时，必须继承 `Assets/Scripts/MVC` 下的基类，不允许绕过基类直接从零实现同职责类。
+
+- `Control` 类：必须继承 `ControlBase`
+- `Model` 类：必须继承 `ModelBase`
+- 主界面窗口类（Wnd）：必须继承 `WndBase`
+- 子界面类（View）：必须继承 `ViewBase`
+
+## 生成代码要求
+
+- 新增功能模块时，优先创建上述基类的派生类，再写业务逻辑。
+- 不得重复定义与基类同名同职责的“替代基类”。
+- 若已有类未继承基类，优先改造为继承关系后再继续扩展。
+
+## 示例
+
+```csharp
+public class LobbyControl : ControlBase { }
+public class LobbyModel : ModelBase { }
+public class LobbyWnd : WndBase { }
+public class LobbyView : ViewBase { }
+```
