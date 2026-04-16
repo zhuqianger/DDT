@@ -9,7 +9,28 @@ public class WndBase : MonoBehaviour
 
     protected virtual void Awake()
     {
+        ViewManager.RegisterWnd(this);
         OnInit();
+    }
+
+    protected static T Show<T>(string prefabPath = null, Transform parent = null) where T : WndBase
+    {
+        return ViewManager.Show<T>(prefabPath, parent);
+    }
+
+    protected static T GetOrCreate<T>(string prefabPath = null, Transform parent = null) where T : WndBase
+    {
+        return ViewManager.GetOrCreate<T>(prefabPath, parent);
+    }
+
+    protected static T GetInstance<T>() where T : WndBase
+    {
+        return ViewManager.GetWnd<T>();
+    }
+
+    protected static void Close<T>() where T : WndBase
+    {
+        ViewManager.Close<T>();
     }
 
     public virtual void Open()
@@ -107,6 +128,7 @@ public class WndBase : MonoBehaviour
 
     private void OnDestroy()
     {
+        ViewManager.UnregisterWnd(this);
         OnWndDestroy();
         childViews.Clear();
     }

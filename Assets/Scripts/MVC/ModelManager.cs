@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ModelManager
+public static class ModelManager
 {
-    private readonly Dictionary<string, ModelBase> modelMap = new Dictionary<string, ModelBase>();
+    private static readonly Dictionary<string, ModelBase> modelMap = new Dictionary<string, ModelBase>();
 
-    public T RegisterModel<T>(string name = null) where T : ModelBase, new()
+    public static T RegisterModel<T>(string name = null) where T : ModelBase, new()
     {
         string modelName = ResolveName<T>(name);
         if (modelMap.TryGetValue(modelName, out ModelBase existingModel))
@@ -20,7 +20,7 @@ public class ModelManager
         return model;
     }
 
-    public T GetModel<T>(string name = null) where T : ModelBase
+    public static T GetModel<T>(string name = null) where T : ModelBase
     {
         string modelName = ResolveName<T>(name);
         if (modelMap.TryGetValue(modelName, out ModelBase model))
@@ -31,7 +31,7 @@ public class ModelManager
         return null;
     }
 
-    public ModelBase GetModel(string name)
+    public static ModelBase GetModel(string name)
     {
         if (string.IsNullOrEmpty(name))
         {
@@ -42,13 +42,13 @@ public class ModelManager
         return model;
     }
 
-    public bool RemoveModel<T>(string name = null) where T : ModelBase
+    public static bool RemoveModel<T>(string name = null) where T : ModelBase
     {
         string modelName = ResolveName<T>(name);
         return RemoveModel(modelName);
     }
 
-    public bool RemoveModel(string name)
+    public static bool RemoveModel(string name)
     {
         if (string.IsNullOrEmpty(name))
         {
@@ -65,7 +65,7 @@ public class ModelManager
         return true;
     }
 
-    public void Clear()
+    public static void Clear()
     {
         foreach (KeyValuePair<string, ModelBase> pair in modelMap)
         {
