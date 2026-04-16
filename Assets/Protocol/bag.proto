@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package ddt.protocol;
+option csharp_namespace = "DDT.Protocol";
+
+message BagItem {
+  int32 item_id = 1;
+  int32 count = 2;
+}
+
+message BagQueryReq {
+}
+
+message BagQueryRes {
+  repeated BagItem items = 1;
+}
+
+message BagUseItemReq {
+  int32 item_id = 1;
+  int32 count = 2;
+}
+
+message BagUseItemRes {
+  bool success = 1;
+  string error_message = 2;
+  int32 item_id = 3;
+  int32 left_count = 4;
+}

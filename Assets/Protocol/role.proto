@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package ddt.protocol;
+option csharp_namespace = "DDT.Protocol";
+
+message RoleInfoReq {
+}
+
+message RoleInfoRes {
+  int32 role_id = 1;
+  string role_name = 2;
+  int32 level = 3;
+  int32 power = 4;
+}
+
+message RoleRenameReq {
+  string new_role_name = 1;
+}
+
+message RoleRenameRes {
+  bool success = 1;
+  string error_message = 2;
+  string new_role_name = 3;
+}
